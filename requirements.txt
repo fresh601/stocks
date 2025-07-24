@@ -5,5 +5,4 @@ requests>=2.31.0
 pykrx>=1.1.2
 FinanceDataReader>=0.9.72
 dart-fss>=0.10.4
-libxml2-dev
-libxslt-dev
+
