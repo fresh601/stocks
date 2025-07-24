@@ -1,3 +1,5 @@
 default-jre
 korean*
 fonts-unfonts-core
+libxml2-dev
+libxslt-dev
