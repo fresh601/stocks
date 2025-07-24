@@ -6,7 +6,6 @@ import requests
 import zipfile
 import xml.etree.ElementTree as ET
 from io import BytesIO
-from pykrx import stock
 import FinanceDataReader as fdr
 
 # ✅ 폰트 설정
@@ -41,11 +40,11 @@ def load_corp_codes(api_key):
     return pd.DataFrame(data)
 
 # ✅ 탭 구성
-tab1, tab2, tab3 = st.tabs(["📈 주가 및 PER", "📑 DART 재무제표", "📡 KRX API"])
+tab1, tab2, tab3 = st.tabs(["📈 주가 데이터", "📑 DART 재무제표", "📡 KRX API"])
 
-# 📈 주가 및 PER 탭
+# 📈 주가 데이터 탭
 with tab1:
-    st.subheader("📈 주가 및 PER 데이터")
+    st.subheader("📈 주가 데이터")
     stock_code = st.text_input("종목 코드 (예: 005930)", '005930')
     start_date = st.date_input("시작일", pd.to_datetime('2024-01-01'))
     end_date = st.date_input("종료일", pd.to_datetime('2024-12-31'))
@@ -56,23 +55,10 @@ with tab1:
             df_fdr = fdr.DataReader(stock_code, start_date, end_date)
             st.dataframe(df_fdr)
 
-            fig1, ax1 = plt.subplots(figsize=(10, 4))
-            df_fdr['Close'].plot(ax=ax1)
-            ax1.set_title(f"{stock_code} 종가")
-            st.pyplot(fig1)
-
-            st.markdown("#### ✅ PyKrx 데이터")
-            ohlcv = stock.get_market_ohlcv_by_date(start_date.strftime('%Y%m%d'), end_date.strftime('%Y%m%d'), stock_code)
-            per = stock.get_market_fundamental_by_date(start_date.strftime('%Y%m%d'), end_date.strftime('%Y%m%d'), stock_code)
-
-            st.dataframe(ohlcv)
-            st.dataframe(per)
-
-            if not per.empty:
-                fig2, ax2 = plt.subplots(figsize=(10, 4))
-                per['PER'].plot(ax=ax2)
-                ax2.set_title(f"{stock_code} PER")
-                st.pyplot(fig2)
+            fig, ax = plt.subplots(figsize=(10, 4))
+            df_fdr['Close'].plot(ax=ax)
+            ax.set_title(f"{stock_code} 종가")
+            st.pyplot(fig)
 
         except Exception as e:
             st.error(f"에러 발생: {e}")
