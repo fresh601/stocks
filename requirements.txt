@@ -1,6 +1,5 @@
-streamlit>=1.36.0
-pandas>=2.2.2
-matplotlib>=3.8.4
-requests>=2.31.0
-pykrx==1.0.51
-FinanceDataReader>=0.9.72
+streamlit>=1.33.0
+pandas
+matplotlib
+requests
+FinanceDataReader
