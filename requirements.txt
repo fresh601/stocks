@@ -1,7 +1,7 @@
-streamlit
-pandas
-matplotlib
-requests
-pykrx
-FinanceDataReader
-dart-fss
+streamlit>=1.36.0
+pandas>=2.2.2
+matplotlib>=3.8.4
+requests>=2.31.0
+pykrx>=1.1.2
+FinanceDataReader>=0.9.72
+dart-fss>=0.10.4
