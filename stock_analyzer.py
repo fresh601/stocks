@@ -23,8 +23,8 @@ OUTPUT_DIR = 'output'
 DART_API_KEY = os.getenv('DART_API_KEY')
 
 if not DART_API_KEY:
-    print("오류: DART_API_KEY 환경변수가 설정되지 않았습니다.")
-    sys.exit(1)
+    print("경고: DART_API_KEY 환경변수가 설정되지 않았습니다. 재무제표 데이터는 '데이터 없음'으로 표시됩니다.")
+
 # ===================================================================
 
 def initialize():
@@ -32,9 +32,7 @@ def initialize():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
-    # GitHub에 업로드한 NanumGothic.otf 경로 지정
     custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')  # 현재 디렉토리에 있다고 가정
-
     if os.path.exists(custom_font_path):
         try:
             prop = fm.FontProperties(fname=custom_font_path)
@@ -56,8 +54,16 @@ def initialize():
 
 def get_corp_code(corp_name):
     """OpenDART API에서 회사 코드 조회"""
+    if not DART_API_KEY:
+        return None
+
     url = "https://opendart.fss.or.kr/api/corpCode.xml"
-    r = requests.get(url, params={"crtfc_key": DART_API_KEY})
+    try:
+        r = requests.get(url, params={"crtfc_key": DART_API_KEY}, timeout=10)
+    except Exception as e:
+        print(f"corpCode.xml 요청 실패: {e}")
+        return None
+
     zip_path = os.path.join(OUTPUT_DIR, "corpCode.zip")
     with open(zip_path, 'wb') as f:
         f.write(r.content)
@@ -73,10 +79,18 @@ def get_corp_code(corp_name):
             return child.find('corp_code').text
     return None
 
+
 def get_financial_statements(corp_code):
     """OpenDART API로 최근 5년 재무제표 가져오기"""
     fs_data = {}
-    for year in range(END_DATE.year - 5, END_DATE.year + 1):
+
+    if not DART_API_KEY or not corp_code:
+        fs_data["재무제표"] = pd.DataFrame({"메시지": ["데이터 없음 (API 키 없음 또는 corp_code 없음)"]})
+        return fs_data
+
+    current_year = END_DATE.year
+
+    for year in range(current_year - 5, current_year + 1):
         url = "https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json"
         params = {
             "crtfc_key": DART_API_KEY,
@@ -84,13 +98,25 @@ def get_financial_statements(corp_code):
             "bsns_year": str(year),
             "reprt_code": "11011"  # 사업보고서(연간)
         }
-        res = requests.get(url, params=params).json()
+        try:
+            res = requests.get(url, params=params, timeout=10).json()
+        except Exception as e:
+            print(f"{year}년 데이터 요청 실패: {e}")
+            continue
+
         if res.get("status") == "000":
             df = pd.DataFrame(res["list"])
             fs_data[str(year)] = df
         else:
             print(f"{year}년 데이터 없음: {res.get('message')}")
+            if year == current_year:  # 최신 연도 데이터 없으면 건너뜀
+                continue
+
+    if not fs_data:
+        fs_data["재무제표"] = pd.DataFrame({"메시지": ["데이터 없음"]})
+
     return fs_data
+
 
 def get_stock_data(ticker):
     """pykrx로 주가 데이터 가져오기"""
@@ -116,6 +142,7 @@ def get_stock_data(ticker):
         print(f"주가 정보를 가져오는 중 오류 발생: {e}")
         return pd.DataFrame()
 
+
 def create_stock_chart(df, ticker):
     """주가 차트 생성"""
     fig = plt.figure(figsize=(15, 8))
@@ -139,18 +166,22 @@ def create_stock_chart(df, ticker):
     plt.close()
     return chart_path
 
+
 def save_to_excel(stock_df, fs_data):
     """주가 데이터 + 재무제표 저장"""
     excel_path = os.path.join(OUTPUT_DIR, 'stock_data.xlsx')
     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-        stock_df.to_excel(writer, sheet_name='Stock_Data', index=False)
+        if not stock_df.empty:
+            stock_df.to_excel(writer, sheet_name='Stock_Data', index=False)
         for year, df in fs_data.items():
             df.to_excel(writer, sheet_name=f'FS_{year}', index=False)
     return excel_path
 
+
 def create_html_report(chart_path, excel_path):
     """HTML 리포트 생성"""
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
+    chart_img = os.path.basename(chart_path) if chart_path else ""
     html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
@@ -162,7 +193,7 @@ def create_html_report(chart_path, excel_path):
         <h1>{TARGET_CORP_NAME} 분석 리포트</h1>
         <p>리포트 생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <h2>주가 차트</h2>
-        <img src="{os.path.basename(chart_path)}" alt="주가 차트">
+        {f'<img src="{chart_img}" alt="주가 차트">' if chart_img else '<p>차트 없음</p>'}
         <h2>상세 데이터</h2>
         <a href="{os.path.basename(excel_path)}" download>엑셀 다운로드</a>
     </body>
@@ -172,9 +203,10 @@ def create_html_report(chart_path, excel_path):
         f.write(html_content)
     return html_path
 
+
 def main():
     initialize()
-    
+
     # 주가 코드 찾기
     krx_list = pd.DataFrame(stock.get_market_ticker_list(market="ALL"), columns=['Ticker'])
     krx_list['Name'] = krx_list['Ticker'].apply(lambda x: stock.get_market_ticker_name(x))
@@ -186,22 +218,17 @@ def main():
 
     # 회사 코드 찾기
     corp_code = get_corp_code(TARGET_CORP_NAME)
-    if not corp_code:
-        print(f"{TARGET_CORP_NAME}의 corp_code를 찾을 수 없습니다.")
-        return
 
     # 데이터 수집
     stock_df = get_stock_data(ticker)
     fs_data = get_financial_statements(corp_code)
 
     # 저장 및 리포트 생성
-    if not stock_df.empty:
-        chart_path = create_stock_chart(stock_df, ticker)
-        excel_path = save_to_excel(stock_df, fs_data)
-        html_path = create_html_report(chart_path, excel_path)
-        print("리포트 생성 완료:", html_path)
-    else:
-        print("주가 데이터를 가져오지 못해 리포트를 생성할 수 없습니다.")
+    chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
+    excel_path = save_to_excel(stock_df, fs_data)
+    html_path = create_html_report(chart_path, excel_path)
+    print("리포트 생성 완료:", html_path)
+
 
 if __name__ == "__main__":
     main()
