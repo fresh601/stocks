@@ -81,7 +81,7 @@ def get_corp_code(corp_name):
 
 
 def get_financial_statements(corp_code):
-    """OpenDART API로 최근 5년 재무제표 가져오기 (개선 버전)"""
+    """OpenDART API로 최근 5년 재무제표 가져오기 (fs_div 추가)"""
     fs_data = {}
 
     if not DART_API_KEY or not corp_code:
@@ -96,7 +96,8 @@ def get_financial_statements(corp_code):
             "crtfc_key": DART_API_KEY,
             "corp_code": corp_code,
             "bsns_year": str(year),
-            "reprt_code": "11011"  # 사업보고서(연간)
+            "reprt_code": "11011",  # 사업보고서(연간)
+            "fs_div": "CFS"         # 연결재무제표 (필수)
         }
         try:
             res = requests.get(url, params=params, timeout=10).json()
@@ -106,7 +107,6 @@ def get_financial_statements(corp_code):
 
         if res.get("status") == "000" and "list" in res:
             df = pd.DataFrame(res["list"])
-            # 붙임 파일 방식처럼 주요 컬럼만 선택 (필요시 전체 컬럼 유지 가능)
             keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount', 'frmtrm_amount', 'bfefrmtrm_amount']
             df = df[[c for c in keep_cols if c in df.columns]]
             fs_data[str(year)] = df
@@ -118,7 +118,6 @@ def get_financial_statements(corp_code):
         fs_data["재무제표"] = pd.DataFrame({"메시지": ["데이터 없음"]})
 
     return fs_data
-
 
 def get_stock_data(ticker):
     """pykrx로 주가 데이터 가져오기"""
