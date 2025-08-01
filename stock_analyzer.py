@@ -28,27 +28,31 @@ if not DART_API_KEY:
 # ===================================================================
 
 def initialize():
-    """폴더 생성 및 한글 폰트 설정"""
+    """결과 저장 폴더 생성 및 한글 폰트 설정"""
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
-    
-    if os.name == 'nt':  # Windows
-        font_family = 'Malgun Gothic'
-    elif os.name == 'posix':  # Mac, Linux
-        font_family = 'AppleGothic'
-    else:
-        font_family = 'NanumGothic'
 
-    try:
-        plt.rc('font', family=font_family)
-    except:
+    # GitHub에 업로드한 NanumGothic.otf 경로 지정
+    custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')  # 현재 디렉토리에 있다고 가정
+
+    if os.path.exists(custom_font_path):
         try:
-            prop = fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf')
+            prop = fm.FontProperties(fname=custom_font_path)
             plt.rc('font', family=prop.get_name())
-        except:
-            print("한글 폰트를 찾을 수 없습니다.")
+            print(f"사용자 지정 폰트 적용: {prop.get_name()}")
+        except Exception as e:
+            print(f"폰트 적용 실패: {e}")
+    else:
+        print("NanumGothic.otf 파일을 찾을 수 없습니다. 기본 폰트를 사용합니다.")
+        if os.name == 'nt':
+            plt.rc('font', family='Malgun Gothic')
+        elif os.name == 'posix':
+            plt.rc('font', family='AppleGothic')
+        else:
+            plt.rc('font', family='NanumGothic')
 
     plt.rcParams['axes.unicode_minus'] = False
+
 
 def get_corp_code(corp_name):
     """OpenDART API에서 회사 코드 조회"""
