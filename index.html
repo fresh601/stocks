@@ -7,22 +7,23 @@
         <style>
             body { font-family: 'Nanum Gothic', sans-serif; }
             img { max-width: 100%; height: auto; }
-            #metricSelect { margin: 10px 0; padding: 5px; }
+            .checkbox-group { margin: 10px 0; }
+            .checkbox-group label { margin-right: 15px; }
         </style>
     </head>
     <body>
         <h1>삼성전자 분석 리포트</h1>
-        <p>리포트 생성 시각: 2025-08-02 05:41:22</p>
+        <p>리포트 생성 시각: 2025-08-02 06:03:55</p>
         
         <h2>주가 차트</h2>
         <img src="stock_chart.png" alt="주가 차트">
 
-        <h2>재무제표 추이</h2>
-        <select id="metricSelect">
-            <option value="매출액">매출액</option>
-            <option value="영업이익">영업이익</option>
-            <option value="당기순이익">당기순이익</option>
-        </select>
+        <h2>재무제표 추이 (여러 지표 비교)</h2>
+        <div class="checkbox-group">
+            <label><input type="checkbox" value="매출액" checked> 매출액</label>
+            <label><input type="checkbox" value="영업이익" checked> 영업이익</label>
+            <label><input type="checkbox" value="당기순이익" checked> 당기순이익</label>
+        </div>
         <canvas id="fsChart" width="800" height="400"></canvas>
 
         <h2>다운로드</h2>
@@ -31,27 +32,36 @@
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
             const fsData = {"매출액": {"2020": null, "2021": null, "2022": null, "2023": null, "2024": 300.87, "2025": null}, "영업이익": {"2020": 35.99, "2021": 51.63, "2022": 43.38, "2023": 6.57, "2024": 32.73, "2025": null}, "당기순이익": {"2020": 26.41, "2021": 39.91, "2022": 55.65, "2023": null, "2024": 34.45, "2025": null}};
-
             const ctx = document.getElementById('fsChart').getContext('2d');
             let chart;
 
-            function updateChart(metric) {
-                const years = Object.keys(fsData[metric]);
-                const values = Object.values(fsData[metric]);
+            const colors = {
+                "매출액": "blue",
+                "영업이익": "orange",
+                "당기순이익": "green"
+            };
+
+            function updateChart() {
+                const checkedMetrics = Array.from(document.querySelectorAll('.checkbox-group input:checked'))
+                                           .map(cb => cb.value);
+
+                const datasets = checkedMetrics.map(metric => {
+                    return {
+                        label: metric + " (조원)",
+                        data: Object.values(fsData[metric]),
+                        borderColor: colors[metric],
+                        backgroundColor: colors[metric],
+                        fill: false,
+                        tension: 0.3
+                    };
+                });
 
                 if (chart) chart.destroy();
                 chart = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: years,
-                        datasets: [{
-                            label: metric + ' (조원)',
-                            data: values,
-                            borderColor: 'blue',
-                            backgroundColor: 'rgba(0, 0, 255, 0.2)',
-                            fill: true,
-                            tension: 0.3
-                        }]
+                        labels: Object.keys(fsData["매출액"]),
+                        datasets: datasets
                     },
                     options: {
                         responsive: true,
@@ -65,12 +75,11 @@
                 });
             }
 
-            document.getElementById('metricSelect').addEventListener('change', function() {
-                updateChart(this.value);
+            document.querySelectorAll('.checkbox-group input').forEach(cb => {
+                cb.addEventListener('change', updateChart);
             });
 
-            // 초기 그래프
-            updateChart('매출액');
+            updateChart();
         </script>
     </body>
     </html>
