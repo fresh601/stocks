@@ -32,15 +32,18 @@ def initialize():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
+    font_applied = False
     custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')
     if os.path.exists(custom_font_path):
         try:
             prop = fm.FontProperties(fname=custom_font_path)
             plt.rc('font', family=prop.get_name())
+            font_applied = True
             print(f"사용자 지정 폰트 적용: {prop.get_name()}")
         except Exception as e:
             print(f"폰트 적용 실패: {e}")
-    else:
+
+    if not font_applied:
         print("NanumGothic.otf 파일을 찾을 수 없습니다. 기본 폰트를 사용합니다.")
         if os.name == 'nt':
             plt.rc('font', family='Malgun Gothic')
@@ -186,23 +189,48 @@ def save_to_excel(stock_df, fs_data):
     return excel_path
 
 
-def create_html_report(chart_path, excel_path):
-    """HTML 리포트 생성"""
+def create_html_report(chart_path, excel_path, stock_df, fs_data):
+    """HTML 리포트 생성 (주가 + 재무제표 포함)"""
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
     chart_img = os.path.basename(chart_path) if chart_path else ""
+
+    # 주가 데이터 HTML 변환
+    stock_html = stock_df.to_html(index=False, border=1, justify='center')
+
+    # 재무제표 HTML 변환 (연도별 표)
+    fs_html_parts = []
+    for year, df in fs_data.items():
+        fs_html_parts.append(f"<h3>{year}년 재무제표</h3>")
+        fs_html_parts.append(df.to_html(index=False, border=1, justify='center'))
+    fs_html = "\n".join(fs_html_parts)
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
         <title>{TARGET_CORP_NAME} 주식 분석 리포트</title>
+        <style>
+            body {{ font-family: 'Nanum Gothic', sans-serif; }}
+            table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+            th, td {{ border: 1px solid #ccc; padding: 5px; text-align: center; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
     </head>
     <body>
         <h1>{TARGET_CORP_NAME} 분석 리포트</h1>
         <p>리포트 생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        
         <h2>주가 차트</h2>
         {f'<img src="{chart_img}" alt="주가 차트">' if chart_img else '<p>차트 없음</p>'}
-        <h2>상세 데이터</h2>
+
+        <h2>주가 데이터</h2>
+        {stock_html}
+
+        <h2>DART 재무제표</h2>
+        {fs_html}
+
+        <h2>다운로드</h2>
         <a href="{os.path.basename(excel_path)}" download>엑셀 다운로드</a>
     </body>
     </html>
@@ -234,7 +262,7 @@ def main():
     # 저장 및 리포트 생성
     chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
     excel_path = save_to_excel(stock_df, fs_data)
-    html_path = create_html_report(chart_path, excel_path)
+    html_path = create_html_report(chart_path, excel_path, stock_df, fs_data)
     print("리포트 생성 완료:", html_path)
 
 
