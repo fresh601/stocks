@@ -17,46 +17,44 @@ END_DATE_STR = END_DATE.strftime('%Y%m%d')
 START_DATE_STR = START_DATE.strftime('%Y%m%d')
 OUTPUT_DIR = 'output'
 
-# ===================================================================
 # API 키
-# ===================================================================
 DART_API_KEY = os.getenv('DART_API_KEY')
 
 if not DART_API_KEY:
     print("경고: DART_API_KEY 환경변수가 설정되지 않았습니다. 재무제표 데이터는 '데이터 없음'으로 표시됩니다.")
 
 # ===================================================================
+# 폰트 설정
+# ===================================================================
+nanum_font = None
 
 def initialize():
     """결과 저장 폴더 생성 및 한글 폰트 설정"""
+    global nanum_font
+
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
-    font_applied = False
     custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')
     if os.path.exists(custom_font_path):
-        try:
-            prop = fm.FontProperties(fname=custom_font_path)
-            plt.rc('font', family=prop.get_name())
-            font_applied = True
-            print(f"사용자 지정 폰트 적용: {prop.get_name()}")
-        except Exception as e:
-            print(f"폰트 적용 실패: {e}")
-
-    if not font_applied:
-        print("NanumGothic.otf 파일을 찾을 수 없습니다. 기본 폰트를 사용합니다.")
+        nanum_font = fm.FontProperties(fname=custom_font_path)
+        plt.rcParams['font.family'] = nanum_font.get_name()
+        print(f"사용자 지정 폰트 적용: {nanum_font.get_name()}")
+    else:
         if os.name == 'nt':
-            plt.rc('font', family='Malgun Gothic')
+            plt.rcParams['font.family'] = 'Malgun Gothic'
         elif os.name == 'posix':
-            plt.rc('font', family='AppleGothic')
+            plt.rcParams['font.family'] = 'AppleGothic'
         else:
-            plt.rc('font', family='NanumGothic')
+            plt.rcParams['font.family'] = 'NanumGothic'
+        print("기본 시스템 폰트 적용")
 
     plt.rcParams['axes.unicode_minus'] = False
 
-
+# ===================================================================
+# 회사 코드 조회
+# ===================================================================
 def get_corp_code(corp_name):
-    """OpenDART API에서 회사 코드 조회"""
     if not DART_API_KEY:
         return None
 
@@ -82,11 +80,11 @@ def get_corp_code(corp_name):
             return child.find('corp_code').text
     return None
 
-
+# ===================================================================
+# 재무제표 수집
+# ===================================================================
 def get_financial_statements(corp_code):
-    """최근 5년 재무제표 가져오기 (CFS 우선, 실패 시 OFS)"""
     fs_data = {}
-
     if not DART_API_KEY or not corp_code:
         fs_data["재무제표"] = pd.DataFrame({"메시지": ["데이터 없음 (API 키 없음 또는 corp_code 없음)"]})
         return fs_data
@@ -95,8 +93,7 @@ def get_financial_statements(corp_code):
 
     for year in range(current_year - 5, current_year + 1):
         found_data = False
-
-        for fs_div in ["CFS", "OFS"]:  # 연결 먼저, 없으면 개별
+        for fs_div in ["CFS", "OFS"]:
             params = {
                 "crtfc_key": DART_API_KEY,
                 "corp_code": corp_code,
@@ -116,21 +113,23 @@ def get_financial_statements(corp_code):
 
             if res.get("status") == "000" and "list" in res:
                 df = pd.DataFrame(res["list"])
-                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount', 'frmtrm_amount', 'bfefrmtrm_amount']
+                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount',
+                             'frmtrm_amount', 'bfefrmtrm_amount']
                 df = df[[c for c in keep_cols if c in df.columns]]
                 fs_data[str(year)] = df
                 print(f"{year}년 {fs_div} 재무제표 수집 완료")
                 found_data = True
-                break  # 성공 시 다음 연도로 이동
+                break
 
         if not found_data:
             fs_data[str(year)] = pd.DataFrame({"메시지": [f"{year}년 데이터 없음"]})
 
     return fs_data
 
-
+# ===================================================================
+# 주가 데이터
+# ===================================================================
 def get_stock_data(ticker):
-    """pykrx로 주가 데이터 가져오기"""
     try:
         ohlcv = stock.get_market_ohlcv_by_date(START_DATE_STR, END_DATE_STR, ticker)
         fundamental = stock.get_market_fundamental_by_date(START_DATE_STR, END_DATE_STR, ticker)
@@ -153,33 +152,67 @@ def get_stock_data(ticker):
         print(f"주가 정보를 가져오는 중 오류 발생: {e}")
         return pd.DataFrame()
 
-
+# ===================================================================
+# 주가 차트
+# ===================================================================
 def create_stock_chart(df, ticker):
-    """주가 차트 생성"""
     fig = plt.figure(figsize=(15, 8))
     ax1 = fig.add_subplot(2, 1, 1)
     ax1.plot(df['Date'], df['Close'], label='종가', color='blue', linewidth=2)
-    ax1.set_title(f'{TARGET_CORP_NAME} ({ticker}) 주가 및 거래량')
-    ax1.set_ylabel('주가 (KRW)')
-    ax1.legend(loc='upper left')
+    ax1.set_title(f'{TARGET_CORP_NAME} ({ticker}) 주가 및 거래량', fontproperties=nanum_font)
+    ax1.set_ylabel('주가 (KRW)', fontproperties=nanum_font)
+    ax1.legend(prop=nanum_font, loc='upper left')
     ax1.grid(True)
 
     ax2 = fig.add_subplot(2, 1, 2, sharex=ax1)
     ax2.bar(df['Date'], df['Volume'], label='거래량', color='grey', alpha=0.7)
-    ax2.set_ylabel('거래량')
-    ax2.set_xlabel('날짜')
-    ax2.legend(loc='upper left')
+    ax2.set_ylabel('거래량', fontproperties=nanum_font)
+    ax2.set_xlabel('날짜', fontproperties=nanum_font)
+    ax2.legend(prop=nanum_font, loc='upper left')
     ax2.grid(True)
 
     plt.tight_layout()
     chart_path = os.path.join(OUTPUT_DIR, 'stock_chart.png')
-    plt.savefig(chart_path)
+    plt.savefig(chart_path, bbox_inches='tight')
     plt.close()
     return chart_path
 
+# ===================================================================
+# 재무제표 그래프
+# ===================================================================
+def create_fs_chart(fs_data):
+    metrics = ["매출액", "영업이익", "당기순이익"]
+    years = []
+    chart_data = {m: [] for m in metrics}
 
+    for year, df in fs_data.items():
+        years.append(year)
+        for m in metrics:
+            try:
+                val = df.loc[df['account_nm'] == m, 'thstrm_amount'].values[0]
+                val = int(str(val).replace(',', '').strip())
+            except:
+                val = None
+            chart_data[m].append(val)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for m in metrics:
+        ax.plot(years, chart_data[m], marker='o', label=m)
+
+    ax.set_title("최근 5년 재무제표 추이", fontproperties=nanum_font)
+    ax.set_ylabel("금액(백만원)", fontproperties=nanum_font)
+    ax.legend(prop=nanum_font)
+    ax.grid(True)
+
+    chart_path = os.path.join(OUTPUT_DIR, 'fs_chart.png')
+    plt.savefig(chart_path, bbox_inches='tight')
+    plt.close()
+    return chart_path
+
+# ===================================================================
+# 엑셀 저장
+# ===================================================================
 def save_to_excel(stock_df, fs_data):
-    """주가 데이터 + 재무제표 저장"""
     excel_path = os.path.join(OUTPUT_DIR, 'stock_data.xlsx')
     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
         if not stock_df.empty:
@@ -188,21 +221,11 @@ def save_to_excel(stock_df, fs_data):
             df.to_excel(writer, sheet_name=f'FS_{year}', index=False)
     return excel_path
 
-
-def create_html_report(chart_path, excel_path, stock_df, fs_data):
-    """HTML 리포트 생성 (주가 + 재무제표 포함)"""
+# ===================================================================
+# HTML 리포트
+# ===================================================================
+def create_html_report(stock_chart_path, fs_chart_path, excel_path):
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
-    chart_img = os.path.basename(chart_path) if chart_path else ""
-
-    # 주가 데이터 HTML 변환
-    stock_html = stock_df.to_html(index=False, border=1, justify='center')
-
-    # 재무제표 HTML 변환 (연도별 표)
-    fs_html_parts = []
-    for year, df in fs_data.items():
-        fs_html_parts.append(f"<h3>{year}년 재무제표</h3>")
-        fs_html_parts.append(df.to_html(index=False, border=1, justify='center'))
-    fs_html = "\n".join(fs_html_parts)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -212,9 +235,7 @@ def create_html_report(chart_path, excel_path, stock_df, fs_data):
         <title>{TARGET_CORP_NAME} 주식 분석 리포트</title>
         <style>
             body {{ font-family: 'Nanum Gothic', sans-serif; }}
-            table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-            th, td {{ border: 1px solid #ccc; padding: 5px; text-align: center; }}
-            th {{ background-color: #f2f2f2; }}
+            img {{ max-width: 100%; height: auto; }}
         </style>
     </head>
     <body>
@@ -222,13 +243,10 @@ def create_html_report(chart_path, excel_path, stock_df, fs_data):
         <p>리포트 생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         
         <h2>주가 차트</h2>
-        {f'<img src="{chart_img}" alt="주가 차트">' if chart_img else '<p>차트 없음</p>'}
+        <img src="{os.path.basename(stock_chart_path)}" alt="주가 차트">
 
-        <h2>주가 데이터</h2>
-        {stock_html}
-
-        <h2>DART 재무제표</h2>
-        {fs_html}
+        <h2>재무제표 추이</h2>
+        <img src="{os.path.basename(fs_chart_path)}" alt="재무제표 추이">
 
         <h2>다운로드</h2>
         <a href="{os.path.basename(excel_path)}" download>엑셀 다운로드</a>
@@ -239,7 +257,9 @@ def create_html_report(chart_path, excel_path, stock_df, fs_data):
         f.write(html_content)
     return html_path
 
-
+# ===================================================================
+# main
+# ===================================================================
 def main():
     initialize()
 
@@ -259,12 +279,16 @@ def main():
     stock_df = get_stock_data(ticker)
     fs_data = get_financial_statements(corp_code)
 
-    # 저장 및 리포트 생성
-    chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
-    excel_path = save_to_excel(stock_df, fs_data)
-    html_path = create_html_report(chart_path, excel_path, stock_df, fs_data)
-    print("리포트 생성 완료:", html_path)
+    # 차트 생성
+    stock_chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
+    fs_chart_path = create_fs_chart(fs_data)
 
+    # 저장
+    excel_path = save_to_excel(stock_df, fs_data)
+
+    # HTML 리포트 생성
+    html_path = create_html_report(stock_chart_path, fs_chart_path, excel_path)
+    print("리포트 생성 완료:", html_path)
 
 if __name__ == "__main__":
     main()
