@@ -32,7 +32,7 @@ def initialize():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
-    custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')  # 현재 디렉토리에 있다고 가정
+    custom_font_path = os.path.join(os.getcwd(), 'NanumGothic.otf')
     if os.path.exists(custom_font_path):
         try:
             prop = fm.FontProperties(fname=custom_font_path)
@@ -81,7 +81,7 @@ def get_corp_code(corp_name):
 
 
 def get_financial_statements(corp_code):
-    """OpenDART API로 최근 5년 재무제표 가져오기 (fs_div=CFS 적용)"""
+    """최근 5년 재무제표 가져오기 (CFS 우선, 실패 시 OFS)"""
     fs_data = {}
 
     if not DART_API_KEY or not corp_code:
@@ -91,32 +91,37 @@ def get_financial_statements(corp_code):
     current_year = END_DATE.year
 
     for year in range(current_year - 5, current_year + 1):
-        url = "https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json"
-        params = {
-            "crtfc_key": DART_API_KEY,
-            "corp_code": corp_code,
-            "bsns_year": str(year),
-            "reprt_code": "11011",  # 사업보고서(연간)
-            "fs_div": "CFS"         # 연결재무제표 (필수)
-        }
-        try:
-            res = requests.get(url, params=params, timeout=10).json()
-        except Exception as e:
-            print(f"{year}년 데이터 요청 실패: {e}")
-            continue
+        found_data = False
 
-        if res.get("status") == "000" and "list" in res:
-            df = pd.DataFrame(res["list"])
-            # 주요 컬럼만 선택 (없으면 전체 유지)
-            keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount', 'frmtrm_amount', 'bfefrmtrm_amount']
-            df = df[[c for c in keep_cols if c in df.columns]]
-            fs_data[str(year)] = df
-            print(f"{year}년 재무제표 수집 완료")
-        else:
-            print(f"{year}년 데이터 없음: {res.get('message')}")
+        for fs_div in ["CFS", "OFS"]:  # 연결 먼저, 없으면 개별
+            params = {
+                "crtfc_key": DART_API_KEY,
+                "corp_code": corp_code,
+                "bsns_year": str(year),
+                "reprt_code": "11011",
+                "fs_div": fs_div
+            }
+            try:
+                res = requests.get(
+                    "https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json",
+                    params=params,
+                    timeout=10
+                ).json()
+            except Exception as e:
+                print(f"{year}년 {fs_div} 요청 실패: {e}")
+                continue
 
-    if not fs_data:
-        fs_data["재무제표"] = pd.DataFrame({"메시지": ["데이터 없음"]})
+            if res.get("status") == "000" and "list" in res:
+                df = pd.DataFrame(res["list"])
+                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount', 'frmtrm_amount', 'bfefrmtrm_amount']
+                df = df[[c for c in keep_cols if c in df.columns]]
+                fs_data[str(year)] = df
+                print(f"{year}년 {fs_div} 재무제표 수집 완료")
+                found_data = True
+                break  # 성공 시 다음 연도로 이동
+
+        if not found_data:
+            fs_data[str(year)] = pd.DataFrame({"메시지": [f"{year}년 데이터 없음"]})
 
     return fs_data
 
