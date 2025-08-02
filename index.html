@@ -7,20 +7,71 @@
         <style>
             body { font-family: 'Nanum Gothic', sans-serif; }
             img { max-width: 100%; height: auto; }
+            #metricSelect { margin: 10px 0; padding: 5px; }
         </style>
     </head>
     <body>
         <h1>삼성전자 분석 리포트</h1>
-        <p>리포트 생성 시각: 2025-08-02 05:33:23</p>
+        <p>리포트 생성 시각: 2025-08-02 05:41:22</p>
         
         <h2>주가 차트</h2>
         <img src="stock_chart.png" alt="주가 차트">
 
         <h2>재무제표 추이</h2>
-        <img src="fs_chart.png" alt="재무제표 추이">
+        <select id="metricSelect">
+            <option value="매출액">매출액</option>
+            <option value="영업이익">영업이익</option>
+            <option value="당기순이익">당기순이익</option>
+        </select>
+        <canvas id="fsChart" width="800" height="400"></canvas>
 
         <h2>다운로드</h2>
         <a href="stock_data.xlsx" download>엑셀 다운로드</a>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const fsData = {"매출액": {"2020": null, "2021": null, "2022": null, "2023": null, "2024": 300.87, "2025": null}, "영업이익": {"2020": 35.99, "2021": 51.63, "2022": 43.38, "2023": 6.57, "2024": 32.73, "2025": null}, "당기순이익": {"2020": 26.41, "2021": 39.91, "2022": 55.65, "2023": null, "2024": 34.45, "2025": null}};
+
+            const ctx = document.getElementById('fsChart').getContext('2d');
+            let chart;
+
+            function updateChart(metric) {
+                const years = Object.keys(fsData[metric]);
+                const values = Object.values(fsData[metric]);
+
+                if (chart) chart.destroy();
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: years,
+                        datasets: [{
+                            label: metric + ' (조원)',
+                            data: values,
+                            borderColor: 'blue',
+                            backgroundColor: 'rgba(0, 0, 255, 0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true }
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('metricSelect').addEventListener('change', function() {
+                updateChart(this.value);
+            });
+
+            // 초기 그래프
+            updateChart('매출액');
+        </script>
     </body>
     </html>
     
