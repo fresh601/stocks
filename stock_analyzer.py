@@ -114,15 +114,14 @@ def get_financial_statements(corp_code):
 
             if res.get("status") == "000" and "list" in res:
                 df = pd.DataFrame(res["list"])
-                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount']
+                keep_cols = ['account_nm', 'thstrm_amount']
                 df = df[[c for c in keep_cols if c in df.columns]]
                 fs_data[str(year)] = df
-                print(f"{year}년 {fs_div} 재무제표 수집 완료")
                 found_data = True
                 break
 
         if not found_data:
-            fs_data[str(year)] = pd.DataFrame({"메시지": [f"{year}년 데이터 없음"]})
+            fs_data[str(year)] = pd.DataFrame({"account_nm": [], "thstrm_amount": []})
 
     return fs_data
 
@@ -178,11 +177,10 @@ def create_stock_chart(df, ticker):
     return chart_path
 
 # ===================================================================
-# HTML 리포트 (Chart.js + 여러 지표 선택)
+# HTML 리포트 (Chart.js + 여러 지표 선택 + spanGaps)
 # ===================================================================
 def create_html_report(stock_chart_path, excel_path, fs_chart_data):
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
-
     fs_json = json.dumps(fs_chart_data, ensure_ascii=False)
 
     html_content = f"""
@@ -257,7 +255,8 @@ def create_html_report(stock_chart_path, excel_path, fs_chart_data):
                         }},
                         scales: {{
                             y: {{ beginAtZero: true }}
-                        }}
+                        }},
+                        spanGaps: true // 결측값 있어도 선 연결
                     }}
                 }});
             }}
@@ -297,7 +296,7 @@ def main():
     stock_df = get_stock_data(ticker)
     fs_data = get_financial_statements(corp_code)
 
-    # Chart.js에 쓸 JSON 데이터 변환 (원 → 조원)
+    # Chart.js용 데이터 변환 (원 → 조원)
     fs_chart_data = {}
     for metric in ["매출액", "영업이익", "당기순이익"]:
         fs_chart_data[metric] = {}
