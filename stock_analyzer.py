@@ -178,7 +178,7 @@ def create_stock_chart(df, ticker):
     return chart_path
 
 # ===================================================================
-# 재무제표 그래프
+# 재무제표 그래프 (조원 단위)
 # ===================================================================
 def create_fs_chart(fs_data):
     metrics = ["매출액", "영업이익", "당기순이익"]
@@ -196,8 +196,8 @@ def create_fs_chart(fs_data):
                     val = None
                 else:
                     val = int(val)
-                    # 원 → 억원 단위 변환
-                    val = round(val / 100000000, 2)
+                    # 원 → 조원 단위 변환 (1조 = 10^12 원)
+                    val = round(val / 1_0000_0000_0000, 2)
             except:
                 val = None
             chart_data[m].append(val)
@@ -206,8 +206,8 @@ def create_fs_chart(fs_data):
     for m in metrics:
         ax.plot(years, chart_data[m], marker='o', label=m)
 
-    ax.set_title("최근 5년 재무제표 추이 (억원)", fontproperties=nanum_font)
-    ax.set_ylabel("금액(억원)", fontproperties=nanum_font)
+    ax.set_title("최근 5년 재무제표 추이 (조원)", fontproperties=nanum_font)
+    ax.set_ylabel("금액(조원)", fontproperties=nanum_font)
     ax.legend(prop=nanum_font)
     ax.grid(True)
 
