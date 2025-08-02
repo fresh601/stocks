@@ -8,6 +8,7 @@ import matplotlib.font_manager as fm
 from datetime import datetime, timedelta
 import zipfile
 import xml.etree.ElementTree as ET
+import json
 
 # --- 설정 ---
 TARGET_CORP_NAME = '삼성전자'
@@ -113,8 +114,7 @@ def get_financial_statements(corp_code):
 
             if res.get("status") == "000" and "list" in res:
                 df = pd.DataFrame(res["list"])
-                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount',
-                             'frmtrm_amount', 'bfefrmtrm_amount']
+                keep_cols = ['sj_div', 'sj_nm', 'account_nm', 'thstrm_amount']
                 df = df[[c for c in keep_cols if c in df.columns]]
                 fs_data[str(year)] = df
                 print(f"{year}년 {fs_div} 재무제표 수집 완료")
@@ -153,7 +153,7 @@ def get_stock_data(ticker):
         return pd.DataFrame()
 
 # ===================================================================
-# 주가 차트
+# 주가 차트 (이미지)
 # ===================================================================
 def create_stock_chart(df, ticker):
     fig = plt.figure(figsize=(15, 8))
@@ -178,61 +178,12 @@ def create_stock_chart(df, ticker):
     return chart_path
 
 # ===================================================================
-# 재무제표 그래프 (조원 단위)
+# HTML 리포트 (Chart.js 인터랙티브 그래프)
 # ===================================================================
-def create_fs_chart(fs_data):
-    metrics = ["매출액", "영업이익", "당기순이익"]
-    years = []
-    chart_data = {m: [] for m in metrics}
-
-    for year, df in fs_data.items():
-        years.append(year)
-        for m in metrics:
-            try:
-                val = df.loc[df['account_nm'] == m, 'thstrm_amount'].values[0]
-                # 문자열 → 숫자 변환
-                val = str(val).replace(',', '').strip()
-                if val == '' or val.lower() == 'nan':
-                    val = None
-                else:
-                    val = int(val)
-                    # 원 → 조원 단위 변환 (1조 = 10^12 원)
-                    val = round(val / 1_0000_0000_0000, 2)
-            except:
-                val = None
-            chart_data[m].append(val)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for m in metrics:
-        ax.plot(years, chart_data[m], marker='o', label=m)
-
-    ax.set_title("최근 5년 재무제표 추이 (조원)", fontproperties=nanum_font)
-    ax.set_ylabel("금액(조원)", fontproperties=nanum_font)
-    ax.legend(prop=nanum_font)
-    ax.grid(True)
-
-    chart_path = os.path.join(OUTPUT_DIR, 'fs_chart.png')
-    plt.savefig(chart_path, bbox_inches='tight')
-    plt.close()
-    return chart_path
-
-# ===================================================================
-# 엑셀 저장
-# ===================================================================
-def save_to_excel(stock_df, fs_data):
-    excel_path = os.path.join(OUTPUT_DIR, 'stock_data.xlsx')
-    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-        if not stock_df.empty:
-            stock_df.to_excel(writer, sheet_name='Stock_Data', index=False)
-        for year, df in fs_data.items():
-            df.to_excel(writer, sheet_name=f'FS_{year}', index=False)
-    return excel_path
-
-# ===================================================================
-# HTML 리포트
-# ===================================================================
-def create_html_report(stock_chart_path, fs_chart_path, excel_path):
+def create_html_report(stock_chart_path, excel_path, fs_chart_data):
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
+
+    fs_json = json.dumps(fs_chart_data, ensure_ascii=False)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -243,6 +194,7 @@ def create_html_report(stock_chart_path, fs_chart_path, excel_path):
         <style>
             body {{ font-family: 'Nanum Gothic', sans-serif; }}
             img {{ max-width: 100%; height: auto; }}
+            #metricSelect {{ margin: 10px 0; padding: 5px; }}
         </style>
     </head>
     <body>
@@ -253,10 +205,60 @@ def create_html_report(stock_chart_path, fs_chart_path, excel_path):
         <img src="{os.path.basename(stock_chart_path)}" alt="주가 차트">
 
         <h2>재무제표 추이</h2>
-        <img src="{os.path.basename(fs_chart_path)}" alt="재무제표 추이">
+        <select id="metricSelect">
+            <option value="매출액">매출액</option>
+            <option value="영업이익">영업이익</option>
+            <option value="당기순이익">당기순이익</option>
+        </select>
+        <canvas id="fsChart" width="800" height="400"></canvas>
 
         <h2>다운로드</h2>
         <a href="{os.path.basename(excel_path)}" download>엑셀 다운로드</a>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const fsData = {fs_json};
+
+            const ctx = document.getElementById('fsChart').getContext('2d');
+            let chart;
+
+            function updateChart(metric) {{
+                const years = Object.keys(fsData[metric]);
+                const values = Object.values(fsData[metric]);
+
+                if (chart) chart.destroy();
+                chart = new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: years,
+                        datasets: [{{
+                            label: metric + ' (조원)',
+                            data: values,
+                            borderColor: 'blue',
+                            backgroundColor: 'rgba(0, 0, 255, 0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        plugins: {{
+                            legend: {{ display: true }}
+                        }},
+                        scales: {{
+                            y: {{ beginAtZero: true }}
+                        }}
+                    }}
+                }});
+            }}
+
+            document.getElementById('metricSelect').addEventListener('change', function() {{
+                updateChart(this.value);
+            }});
+
+            // 초기 그래프
+            updateChart('매출액');
+        </script>
     </body>
     </html>
     """
@@ -286,15 +288,36 @@ def main():
     stock_df = get_stock_data(ticker)
     fs_data = get_financial_statements(corp_code)
 
-    # 차트 생성
-    stock_chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
-    fs_chart_path = create_fs_chart(fs_data)
+    # Chart.js에 쓸 JSON 데이터 변환 (원→조원)
+    fs_chart_data = {}
+    for metric in ["매출액", "영업이익", "당기순이익"]:
+        fs_chart_data[metric] = {}
+        for year, df in fs_data.items():
+            try:
+                val = df.loc[df['account_nm'] == metric, 'thstrm_amount'].values[0]
+                val = str(val).replace(',', '').strip()
+                if val:
+                    val = int(val) / 1_0000_0000_0000  # 원 → 조원
+                    val = round(val, 2)
+                else:
+                    val = None
+            except:
+                val = None
+            fs_chart_data[metric][year] = val
 
-    # 저장
-    excel_path = save_to_excel(stock_df, fs_data)
+    # 주가 차트 저장
+    stock_chart_path = create_stock_chart(stock_df, ticker) if not stock_df.empty else None
+
+    # 엑셀 저장
+    excel_path = os.path.join(OUTPUT_DIR, 'stock_data.xlsx')
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        if not stock_df.empty:
+            stock_df.to_excel(writer, sheet_name='Stock_Data', index=False)
+        for year, df in fs_data.items():
+            df.to_excel(writer, sheet_name=f'FS_{year}', index=False)
 
     # HTML 리포트 생성
-    html_path = create_html_report(stock_chart_path, fs_chart_path, excel_path)
+    html_path = create_html_report(stock_chart_path, excel_path, fs_chart_data)
     print("리포트 생성 완료:", html_path)
 
 if __name__ == "__main__":
