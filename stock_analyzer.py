@@ -190,7 +190,14 @@ def create_fs_chart(fs_data):
         for m in metrics:
             try:
                 val = df.loc[df['account_nm'] == m, 'thstrm_amount'].values[0]
-                val = int(str(val).replace(',', '').strip())
+                # 문자열 → 숫자 변환
+                val = str(val).replace(',', '').strip()
+                if val == '' or val.lower() == 'nan':
+                    val = None
+                else:
+                    val = int(val)
+                    # 원 → 억원 단위 변환
+                    val = round(val / 100000000, 2)
             except:
                 val = None
             chart_data[m].append(val)
@@ -199,8 +206,8 @@ def create_fs_chart(fs_data):
     for m in metrics:
         ax.plot(years, chart_data[m], marker='o', label=m)
 
-    ax.set_title("최근 5년 재무제표 추이", fontproperties=nanum_font)
-    ax.set_ylabel("금액(백만원)", fontproperties=nanum_font)
+    ax.set_title("최근 5년 재무제표 추이 (억원)", fontproperties=nanum_font)
+    ax.set_ylabel("금액(억원)", fontproperties=nanum_font)
     ax.legend(prop=nanum_font)
     ax.grid(True)
 
