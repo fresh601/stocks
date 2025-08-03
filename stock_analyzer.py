@@ -1,5 +1,4 @@
 import os
-import sys
 import requests
 import pandas as pd
 from pykrx import stock
@@ -149,17 +148,17 @@ def create_html_report(stock_chart_data, fs_chart_data, excel_path):
 
         // 주가 체크박스 생성
         const stockCheckboxes = document.getElementById('stockCheckboxes');
-        Object.keys(stockData).forEach(metric => {{
+        Object.keys(stockData).forEach(m => {{
             const label = document.createElement('label');
-            label.innerHTML = `<input type="checkbox" value="${metric}" checked> ${metric}`;
+            label.innerHTML = `<input type="checkbox" value="${{m}}" checked> ${{m}}`;
             stockCheckboxes.appendChild(label);
         }});
 
         // 재무제표 체크박스 생성
         const fsCheckboxes = document.getElementById('fsCheckboxes');
-        Object.keys(fsData).forEach(metric => {{
+        Object.keys(fsData).forEach(m => {{
             const label = document.createElement('label');
-            label.innerHTML = `<input type="checkbox" value="${metric}"> ${metric}`;
+            label.innerHTML = `<input type="checkbox" value="${{m}}"> ${{m}}`;
             fsCheckboxes.appendChild(label);
         }});
 
