@@ -16,7 +16,7 @@ START_DATE_STR = START_DATE.strftime('%Y%m%d')
 OUTPUT_DIR = 'output'
 
 # API 키
-DART_API_KEY = os.getenv('DART_API_KEY')
+DART_API_KEY = get_secret("DART_API_KEY")
 
 if not DART_API_KEY:
     print("경고: DART_API_KEY 환경변수가 설정되지 않았습니다. 재무제표 데이터는 '데이터 없음'으로 표시됩니다.")
@@ -268,3 +268,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
