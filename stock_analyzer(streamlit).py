@@ -48,20 +48,43 @@ def ping_dart_key_once(api_key: str) -> bool:
             params={"crtfc_key": api_key},
             timeout=10,
         )
-        if "zip" not in (r.headers.get("Content-Type", "").lower()):
-            snippet = r.text[:160]
-            if st:
-                st.error(f"[DART] corpCode 응답이 ZIP 아님 → 키/호출/형식 오류 가능. 응답: {snippet}")
+        # ⚠️ Content-Type을 믿지 말고 바로 ZIP 시도
+        content = r.content or b""
+        # 1) 빠른 시그니처 체크 (선택)
+        if not content.startswith(b"PK\x03\x04"):
+            # 일부 서버는 앞에 공백/바이트가 섞일 수도 있으니 곧바로 ZipFile 시도
+            pass
+        # 2) 실제 ZipFile로 열어보며 최종 판정
+        import io, zipfile
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            # 파일 목록에 CORPCODE.xml이 있으면 정상
+            if "CORPCODE.xml" in zf.namelist():
+                if st:
+                    st.success("DART 키 연결 정상 ✅")
+                else:
+                    print("DART 키 연결 정상")
+                return True
             else:
-                print(f"[DART] corpCode 응답: {snippet}")
-            return False
-        return True
+                if st:
+                    st.error("DART corpCode ZIP은 받았지만 CORPCODE.xml이 없습니다.")
+                else:
+                    print("DART corpCode ZIP은 받았지만 CORPCODE.xml이 없습니다.")
+                return False
+    except zipfile.BadZipFile:
+        # 진짜로 ZIP이 아니면 여기서 잡힘
+        snippet = (r.text or "")[:160]
+        if st:
+            st.error(f"[DART] corpCode 응답이 ZIP이 아닙니다. 응답: {snippet}")
+        else:
+            print(f"[DART] corpCode 응답이 ZIP이 아닙니다. 응답: {snippet}")
+        return False
     except Exception as e:
         if st:
-            st.error(f"[DART] 접속 실패: {e}")
+            st.error(f"[DART] 접속/파싱 실패: {e}")
         else:
-            print(f"[DART] 접속 실패: {e}")
+            print(f"[DART] 접속/파싱 실패: {e}")
         return False
+
 
 # ─────────────────────────────────────────────────────────────
 # 설정
@@ -520,3 +543,4 @@ if __name__ == "__main__":
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
             html_path = create_html_report(target_name, stock_chart_data, fs_chart_data, os.path.basename(excel_path))
             print("리포트 생성 완료:", html_path)
+
