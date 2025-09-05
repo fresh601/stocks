@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Streamlit KRX + DART 재무 리포트 (회사 검색 + 보고서 종류 선택 + 연결/별도 모드 + 자유 선택 그래프 + HTML/엑셀 다운로드)
+Streamlit KRX + DART 재무 리포트
+- 회사 검색
+- 연도/보고서 종류(11011/11012/11013/11014) 선택
+- 연결/별도(CFS/OFS) 모드 선택
+- "데이터 불러오기/갱신" 버튼을 눌렀을 때만 실제 API 조회
+- 선택(체크/멀티셀렉트) 변경 시에는 세션 캐시 데이터로 즉시 차트 갱신
+- HTML 리포트(Chart.js 체크박스 UI 포함) + 엑셀 다운로드
 
-필수 패키지 (예):
-  pip install streamlit pykrx pandas requests openpyxl
-
-실행:
-  streamlit run app.py
+실행: streamlit run app.py
+필수: pip install streamlit pykrx pandas requests openpyxl
 """
 
 import os
@@ -20,7 +23,7 @@ from datetime import datetime, timedelta
 from pykrx import stock
 
 # ─────────────────────────────────────────────────────────────
-# Streamlit 환경 로더 (Secrets + 상태 배너)
+# Streamlit & Secrets
 # ─────────────────────────────────────────────────────────────
 try:
     import streamlit as st
@@ -38,7 +41,7 @@ def get_secret(name: str, default: str = "") -> str:
     return str(v).strip() if v is not None else default
 
 def ping_dart_key_once(api_key: str) -> bool:
-    """Content-Type 불신: 실제 ZIP 오픈으로 판정"""
+    """Content-Type 믿지 말고 ZIP 직접 열어 판정"""
     if not api_key:
         msg = "DART_API_KEY가 설정되어 있지 않습니다. (Streamlit Cloud → App → Settings → Secrets)"
         if st: st.warning(msg)
@@ -83,7 +86,7 @@ DART_API_KEY = get_secret("DART_API_KEY")
 ping_dart_key_once(DART_API_KEY)
 
 # ─────────────────────────────────────────────────────────────
-# 유틸/초기화
+# 초기화 & 티커 목록
 # ─────────────────────────────────────────────────────────────
 def initialize():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -103,7 +106,7 @@ else:
         return df
 
 # ─────────────────────────────────────────────────────────────
-# DART: 기업코드/재무
+# DART: 기업코드 & 재무
 # ─────────────────────────────────────────────────────────────
 def get_corp_code(corp_name: str):
     if not DART_API_KEY:
@@ -152,11 +155,11 @@ def get_financial_statements(corp_code: str,
         fs_div_order = ["OFS"]
     elif fs_mode == "AUTO_OFS_CFS":
         fs_div_order = ["OFS", "CFS"]
-    else:  # "AUTO_CFS_OFS" 기본
+    else:  # "AUTO_CFS_OFS"
         fs_div_order = ["CFS", "OFS"]
 
     def try_one_year(year: int):
-        # 연도별 reprt_code 우선순위 구성
+        # 연도별 reprt_code 우선순위
         if reprt_overrides and year in reprt_overrides:
             reprt_codes = [reprt_overrides[year]]
         else:
@@ -390,15 +393,46 @@ def create_html_report(target_corp_name: str, stock_chart_data: dict, fs_chart_d
     return html_path
 
 # ─────────────────────────────────────────────────────────────
-# 메인 (Streamlit UI)
+# 세션 기반: 버튼으로만 조회, 선택 변경은 즉시 갱신
+# ─────────────────────────────────────────────────────────────
+def _params_key(target_name: str, ticker: str, sel_year: int, sel_code: str, fs_mode: str):
+    return f"{target_name}|{ticker}|{sel_year}|{sel_code}|{fs_mode}"
+
+def load_data_by_button(target_name, ticker, sel_year, sel_code, fs_mode):
+    key = _params_key(target_name, ticker, sel_year, sel_code, fs_mode)
+
+    # 파라미터가 바뀌었거나 최초 실행이면 조회
+    if "DATA_KEY" not in st.session_state or st.session_state.DATA_KEY != key:
+        corp_code = get_corp_code(target_name)
+        if not corp_code:
+            st.info("DART 기업코드를 찾지 못했습니다. (키 미설정/호출 제한/미등록 기업 등)")
+            fs_data = {"재무제표": pd.DataFrame({"메시지": ["데이터 없음"]})}
+        else:
+            reprt_overrides = {sel_year: sel_code}
+            fs_data = get_financial_statements(
+                corp_code,
+                reprt_overrides=reprt_overrides,
+                fs_mode=fs_mode
+            )
+        stock_df = get_stock_data(ticker)
+
+        st.session_state.DATA_KEY = key
+        st.session_state.STOCK_DF = stock_df
+        st.session_state.FS_DATA = fs_data
+
+    # 세션에서 반환
+    return st.session_state.get("STOCK_DF", pd.DataFrame()), st.session_state.get("FS_DATA", {})
+
+# ─────────────────────────────────────────────────────────────
+# 메인 UI
 # ─────────────────────────────────────────────────────────────
 def main():
     initialize()
 
-    st.title("📊 KRX 주가 & DART 재무 — 자유 선택 그래프")
-    st.caption("회사명을 검색·선택하고, 연도/보고서/연결 기준을 지정해 원하는 항목을 그래프로 확인하세요. HTML/엑셀 다운로드 제공.")
+    st.title("📊 KRX 주가 & DART 재무 — 자유 선택 그래프 (버튼 조회 + 즉시 갱신)")
+    st.caption("회사/연도/보고서/연결 기준을 정해 한 번만 데이터를 불러오고, 항목 선택은 즉시 차트로 반영됩니다.")
 
-    # 회사 선택 UI
+    # 회사 선택
     krx_df = get_all_krx_symbols()
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -412,7 +446,7 @@ def main():
         )
     target_name = picked.strip()
 
-    # 티커 매핑
+    # 티커
     target_info = krx_df[krx_df["Name"] == target_name]
     if target_info.empty:
         st.error(f"'{target_name}' 을(를) KRX에서 찾을 수 없습니다.")
@@ -420,7 +454,7 @@ def main():
     ticker = target_info["Ticker"].iloc[0]
     st.write(f"**선택된 종목:** {target_name} ({ticker})")
 
-    # ── 보고서 종류 UI (연도 + reprt_code 선택) ─────────────────────
+    # 보고서 종류 선택
     st.subheader("보고서 종류 선택")
     year_options = list(range(END_DATE.year - 5, END_DATE.year + 1))
     sel_year = st.selectbox("연도", options=year_options, index=len(year_options) - 1)
@@ -435,9 +469,8 @@ def main():
     default_idx = list(reprt_map.values()).index(default_code)
     sel_label = st.selectbox("보고서 종류", options=list(reprt_map.keys()), index=default_idx)
     sel_code = reprt_map[sel_label]
-    reprt_overrides = {sel_year: sel_code}
 
-    # ── 연결/별도 선택 UI (fs_mode) ───────────────────────────────
+    # 연결/별도 모드 선택
     st.subheader("연결/별도 선택")
     fs_mode_label = st.selectbox(
         "연결 기준",
@@ -458,20 +491,23 @@ def main():
     }
     fs_mode = fs_mode_map[fs_mode_label]
 
-    # ── DART 기업코드 & 재무 ───────────────────────────────────────
-    corp_code = get_corp_code(target_name)
-    if not corp_code:
-        st.info("DART 기업코드를 찾지 못했습니다. (키 미설정/호출 제한/미등록 기업 등)")
-    fs_data = get_financial_statements(
-        corp_code,
-        reprt_overrides=reprt_overrides,
-        fs_mode=fs_mode
-    ) if corp_code else {"재무제표": pd.DataFrame({"메시지": ["데이터 없음"]})}
+    # 조회 버튼 (눌렀을 때만 실제 API 호출)
+    st.write("---")
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        fetch = st.button("📥 데이터 불러오기 / 갱신", use_container_width=True)
+    with col_b:
+        st.caption("체크/선택 변경 시에는 재조회 없이 즉시 차트만 갱신됩니다.")
 
-    # ── 주가 ───────────────────────────────────────────────────────
-    stock_df = get_stock_data(ticker)
+    if fetch or "STOCK_DF" not in st.session_state:
+        stock_df, fs_data = load_data_by_button(target_name, ticker, sel_year, sel_code, fs_mode)
+    else:
+        stock_df = st.session_state.get("STOCK_DF", pd.DataFrame())
+        fs_data = st.session_state.get("FS_DATA", {})
 
-    # 주가 JSON (리포트용) + 스트림릿 선택 항목 구성
+    st.write("---")
+
+    # 주가 JSON (리포트용) + 선택 항목 구성
     stock_chart_data = {}
     stock_numeric_cols = []
     if not stock_df.empty and "Date" in stock_df.columns:
@@ -482,7 +518,7 @@ def main():
                     str(d.date()): (None if pd.isna(v) else float(v)) for d, v in zip(stock_df["Date"], stock_df[col])
                 }
 
-    # 재무 유효본만 골라서 JSON + 항목 목록
+    # 재무 유효본만 JSON + 항목 목록
     valid_fs = {y: df for y, df in fs_data.items()
                 if isinstance(df, pd.DataFrame) and not df.empty and {"account_nm", "thstrm_amount"}.issubset(df.columns)}
 
@@ -511,7 +547,7 @@ def main():
                 ser = valid_fs[y].loc[valid_fs[y]["account_nm"] == metric, "thstrm_amount"]
                 fs_chart_data[metric][y] = to_trillion(ser.iloc[0]) if len(ser) else None
 
-    # ── 탭 UI: 주가 / 재무 / 리포트&다운로드 ───────────────────────
+    # 탭: 주가 / 재무 / 다운로드
     tab_price, tab_fs, tab_dl = st.tabs(["📈 주가(자유 선택)", "🏦 재무(자유 선택)", "⬇️ 리포트·다운로드"])
 
     with tab_price:
@@ -545,7 +581,7 @@ def main():
             st.info("재무제표 데이터가 비어 있습니다.")
 
     with tab_dl:
-        # 엑셀 저장(원본 시트 유지)
+        # 엑셀 저장
         excel_path = os.path.join(OUTPUT_DIR, "stock_data.xlsx")
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             if not stock_df.empty:
@@ -558,7 +594,7 @@ def main():
                     safe_name = f"FS_{len(writer.book.sheetnames)+1}"
                     df.to_excel(writer, sheet_name=safe_name, index=False)
 
-        # HTML 리포트 생성 (체크박스 UI 그대로 포함)
+        # HTML 리포트 생성
         html_path = create_html_report(target_name, stock_chart_data, fs_chart_data, os.path.basename(excel_path))
 
         st.write("**다운로드**")
@@ -573,7 +609,7 @@ if __name__ == "__main__":
     if st:
         main()
     else:
-        # Streamlit 외 실행 시에도 최소 동작
+        # Streamlit 외 환경에서 최소 동작
         initialize()
         krx_df = get_all_krx_symbols()
         target_name = TARGET_CORP_NAME_DEFAULT
@@ -585,6 +621,8 @@ if __name__ == "__main__":
             corp_code = get_corp_code(target_name)
             fs_data = get_financial_statements(corp_code) if corp_code else {"재무제표": pd.DataFrame({"메시지": ["데이터 없음"]})}
             stock_df = get_stock_data(ticker)
+
+            # JSON 변환
             stock_chart_data = {}
             if not stock_df.empty and "Date" in stock_df.columns:
                 for col in stock_df.columns:
@@ -592,6 +630,7 @@ if __name__ == "__main__":
                         stock_chart_data[col] = {
                             str(d.date()): (None if pd.isna(v) else float(v)) for d, v in zip(stock_df["Date"], stock_df[col])
                         }
+
             valid_fs = {y: df for y, df in fs_data.items()
                         if isinstance(df, pd.DataFrame) and not df.empty and {"account_nm","thstrm_amount"}.issubset(df.columns)}
             fs_chart_data = {}
