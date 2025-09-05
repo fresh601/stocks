@@ -2,12 +2,12 @@ name: Stock Report Auto Update
 
 on:
   workflow_dispatch:  # 수동 실행
-  schedule:
-    - cron: "0 0 * * *"  # 매일 00시 UTC = 한국 시간 오전 9시 실행
-  push:  # 코드 변경 시 자동 실행
-    branches:
-      - main
-      - master
+  #schedule:
+    #- cron: "0 0 * * *"  # 매일 00시 UTC = 한국 시간 오전 9시 실행
+  #push:  # 코드 변경 시 자동 실행
+    #branches:
+      #- main
+      #- master
 
 jobs:
   build:
